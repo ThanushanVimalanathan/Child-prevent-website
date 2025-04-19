@@ -1,0 +1,51 @@
+name: SafeChild Website CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      
+    - name: Validate HTML
+      uses: actions/github-script@v3
+      with:
+        script: |
+          const fs = require('fs');
+          const html = fs.readFileSync('child.html', 'utf8');
+          if (!html.includes('<html') || !html.includes('</html>')) {
+            core.setFailed('Invalid HTML structure');
+          }
+          if (!html.includes('SafeChild')) {
+            core.setFailed('Missing SafeChild title');
+          }
+          if (!html.includes('reportForm')) {
+            core.setFailed('Missing report form');
+          }
+          
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      
+    - name: Setup Pages
+      uses: actions/configure-pages@v1
+      
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v1
+      with:
+        path: '.'
+        
+    - name: Deploy to GitHub Pages
+      uses: actions/deploy-pages@v1
