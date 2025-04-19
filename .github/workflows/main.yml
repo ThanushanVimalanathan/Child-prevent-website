@@ -1,0 +1,135 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Run unit tests
+        run: npm test -- --coverage
+        env:
+          CI: true
+          
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        if: success()
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          CI: true
+          
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: integration-test-results
+          path: test-results/integration/*.xml
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Start server
+        run: npm start &
+        
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          CI: true
+          BASE_URL: http://localhost:3000
+          
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: e2e-test-results
+          path: test-results/e2e/*.xml
+
+  parallel-tests:
+    name: Parallel Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-type: [unit, integration, e2e]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Start server (E2E only)
+        if: matrix.test-type == 'e2e'
+        run: npm start &
+        
+      - name: Run tests
+        run: |
+          if [ "${{ matrix.test-type }}" = "unit" ]; then
+            npm test -- --coverage
+          elif [ "${{ matrix.test-type }}" = "integration" ]; then
+            npm run test:integration
+          else
+            npm run test:e2e
+          fi
+        env:
+          CI: true
+          BASE_URL: http://localhost:3000
+          
+      - name: Upload coverage (Unit only)
+        if: matrix.test-type == 'unit' && success()
+        uses: codecov/codecov-action@v3
+        
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: ${{ matrix.test-type }}-test-results
+          path: test-results/${{ matrix.test-type }}/*.xml
